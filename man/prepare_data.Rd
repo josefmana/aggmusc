@@ -2,28 +2,32 @@
 % Please edit documentation in R/prepare_data.R
 \name{prepare_data}
 \alias{prepare_data}
-\title{Read and format data for further use.}
+\title{Read and format data for further use}
 \usage{
-prepare_data(p)
+prepare_data(dp, ip)
 }
 \arguments{
-\item{path}{Path to an excel file with data.}
+\item{dp}{A character string specifying path to
+the Excel file containing the data.}
 
-\item{list}{A list including data file specification.}
+\item{ip}{A character string specifying path to
+the Excel file containing IDs of patients who
+have signed informed consent.}
 }
 \value{
-A list of tibbles containing relevant
-variables.
+A list of tibbles, each containing the relevant
+variables extracted and formatted from the Excel file.
 }
 \description{
-Using a path to the data (ideally on an external
-drive to ensure patients' anonymity) and a list
-containing specification of excel lists to be
-imported.
+Reads patient data from an Excel file, using a path
+(ideally on an external drive to maintain patients'
+anonymity).
 }
 \examples{
 \dontrun{
-p <- here::here("data-raw", "some cool file name.xlsx")
-data <- prepare_data(p)
+p1 <- here::here("data-raw", "some_cool_file_name.xlsx")
+p2 <- here::here("data-raw", "patients_with_informed_consent.xlsx")
+data <- prepare_data(p1, p2)
 }
+
 }

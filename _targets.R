@@ -4,22 +4,21 @@ library(targets)
 # library(tarchetypes) # Load other packages as needed.
 
 # Set target options:
-tar_option_set(
-  packages = c(
-    NULL
-  )
-)
+tar_option_set()
 
 # Run the R scripts in the R/ folder with custom functions:
 tar_source()
-# tar_source("other_functions.R") # Source other scripts as needed.
 
 # Prepare the target list:
 list(
   tar_target(
     name = data_file,
-    #command = here::here("data-raw", "pro Josef Mana imed export 28_3_2025 data.xlsx"),
-    command = "/Volumes/Extreme SSD/Joska Mana/pro Josef Mana imed export 28_3_2025 data.xlsx",
+    command = "/Volumes/Extreme SSD/aggrescler/imed_export_20250328_data.xlsx",
+    format = "file"
+  ),
+  tar_target(
+    name = valid_patients,
+    command = "/Volumes/Extreme SSD/aggrescler/patients_with_signed IC_202505_REMUS.xlsx",
     format = "file"
   ),
   tar_target(

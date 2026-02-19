@@ -1,14 +1,14 @@
 upstore <- here::here(targets::tar_config_get("store"))
 targets::tar_load(raw_data, store = upstore)
 
-test_that("each patient's demography once", {
+test_that("Each patient's demography once", {
   expect_equal(unique(table(raw_data$id$id)), 1)
 })
 
-test_that("nothing from the future", {
+test_that("Nothing from the future", {
   expect_true(all(na.omit(raw_data$id$birth < Sys.time())))
   expect_true(all(na.omit(raw_data$id$onset < Sys.time())))
-  expect_true(all(na.omit(raw_data$id$birth < raw_data$id$birth))) # No onset before birth
+  expect_true(all(na.omit(raw_data$id$birth < raw_data$id$onset))) # No onset before birth
   expect_true(all(na.omit(raw_data$treatment$start_date < Sys.time())))
   expect_true(all(na.omit(raw_data$treatment$end_date < Sys.time())))
   expect_true(all(na.omit(raw_data$relapses$relapse_date < Sys.time())))

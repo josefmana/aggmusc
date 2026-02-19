@@ -7,6 +7,6 @@
 # * https://testthat.r-lib.org/articles/special-files.html
 
 library(testthat)
-library(AggressiveSclerosis)
+library(aggmusc)
 
-test_check("AggressiveSclerosis")
+test_check("aggmusc")

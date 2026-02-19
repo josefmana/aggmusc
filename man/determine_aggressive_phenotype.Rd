@@ -2,47 +2,59 @@
 % Please edit documentation in R/determine_aggressive_phenotype.R
 \name{determine_aggressive_phenotype}
 \alias{determine_aggressive_phenotype}
-\title{Determine whether patients' MS can be regarded
-as aggressive.}
+\title{Determine aggressive MS}
 \usage{
 determine_aggressive_phenotype(demographics, relapses, edss, eye_check = TRUE)
 }
 \arguments{
-\item{demographics}{A tibble with basic demographic
+\item{demographics}{A tibble containing basic demographic
 variables.}
 
-\item{relapses}{A tibble with relapse dates.}
+\item{relapses}{A tibble containing relapse dates.}
 
-\item{edss}{A tibble with EDSS scores.}
+\item{edss}{A tibble containing EDSS scores over time.}
 
-\item{eye_check}{A logical indicating whether plots
-of patients classified as suffering the aggressive
-disease form should be plotted for manual control.}
+\item{eye_check}{Logical; if \code{TRUE}, plots of patients
+classified as having aggressive disease will be displayed
+for manual inspection.}
 }
 \value{
-A list with a tibble containing demographic
-data with added column denoting aggressive disease
-($data) and text summarising the process ($text).
+A list with two elements:
+\describe{
+\item{$data}{A tibble with the original demographic data
+plus an additional column indicating whether each patient
+was classified as having an aggressive disease course.}
+\item{$text}{A summary text describing the classification
+process.}
+}
 }
 \description{
-The function uses the following criteria to
-determined whether patient ought to be regarded
-as suffering aggressive form MS:
-(i) at least 10 years of disease duration,
-(ii) EDSS ≥ 6 appeared within the first 10
-years of the disease,
-(iii) EDSS ≥ 6 sustained for at least 6 months
-after it appeared,
-(iv) EDSS did not go below 6 until the end of
-observation period.
-Across all, the supplementary criterion needs to
-be met:
-(suppl.) EDSS ≥ 6 was NOT within 30 days after relapse
+Classifies patients as suffering from an aggressive
+form of Multiple Sclerosis (MS).
+}
+\details{
+Uses the following the following criteria:
+\itemize{
+\item (i) The patient does \strong{not} have a Primary Progressive phenotype.
+\item (ii) Disease duration is at least 10 years.
+\item (iii) EDSS at least 6 occurred within the first 10 years of the disease.
+\item (iv) EDSS at least 6 was sustained for at least 6 months after it first appeared.
+\item (v) EDSS never dropped below 6 until the end of the observation period.
+}
+
+Additionally, a supplementary criterion must be met:
+\itemize{
+\item (suppl.) The EDSS at least 6 threshold did \strong{not} occur within 30 days after a relapse.
+}
 }
 \examples{
 \dontrun{
-p <- here::here("data-raw", "some cool file name.xlsx")
-d <- prepare_data(p)
-outcome_data <- determine_aggressive_phenotype(d$id, d$relapses, d$edss, T)
+p1 <- here::here("data-raw", "some_cool_file_name.xlsx")
+p2 <- here::here("data-raw", "patients_with_informed_consent.xlsx")
+d <- prepare_data(p1, p2)
+outcome_data <- determine_aggressive_phenotype(
+  d$id, d$relapses, d$edss, eye_check = TRUE
+)
 }
+
 }
