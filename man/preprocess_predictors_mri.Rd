@@ -7,7 +7,7 @@
 preprocess_predictors_mri(d, onset)
 }
 \arguments{
-\item{d}{A tibble with the original treatment data.}
+\item{d}{A tibble with the original MRI data.}
 
 \item{onset}{A tibble containing id/disease onset pairs.}
 }

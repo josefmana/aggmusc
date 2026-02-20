@@ -23,7 +23,10 @@ list(
   ),
   tar_target(
     name = raw_data,
-    command = prepare_data(data_file)
+    command = prepare_data(
+      dp = data_file,
+      ip = valid_patients
+    )
   ),
   tar_target(
     name = classified_data,
@@ -39,12 +42,12 @@ list(
     name = finished_data,
     command = preprocess_predictors(
       d0 = classified_data$data,
-      t = raw_data$treatment,
-      r = raw_data$relapses,
-      m = raw_data$mri,
-      c = raw_data$csf,
-      o = raw_data$ocb,
+      treat = raw_data$treatment,
+      rel = raw_data$relapses,
+      mri = raw_data$mri,
+      csf = raw_data$csf,
       chol = raw_data$cholesterol
     )
-  )
+  ),
+  NULL
 )

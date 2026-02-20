@@ -7,7 +7,7 @@
 preprocess_predictors_relapses(d, onset)
 }
 \arguments{
-\item{d}{A tibble with the original treatment data.}
+\item{d}{A tibble with the original relapse data.}
 
 \item{onset}{A tibble containing id/disease onset pairs.}
 }

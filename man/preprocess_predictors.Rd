@@ -2,46 +2,104 @@
 % Please edit documentation in R/preprocess_predictors.R
 \name{preprocess_predictors}
 \alias{preprocess_predictors}
-\title{Preprocess potential predictors.}
+\title{Preprocess potential predictors}
 \usage{
-preprocess_predictors(d0, t, r, m, c, o, chol)
+preprocess_predictors(d0, treat, rel, mri, csf, chol)
 }
 \arguments{
 \item{d0}{A tibble containing data pre-processed by
 \code{determine_aggressive_phenotype}.}
 
-\item{t}{A tibble containing treatment variables.}
+\item{treat}{A tibble containing treatment variables.}
 
-\item{r}{A tibble containing relapses data.}
+\item{rel}{A tibble containing relapse data.}
 
-\item{m}{A tibble containing MRI data.}
+\item{mri}{A tibble containing MRI data.}
 
-\item{c}{A tibble containing CSF data.}
-
-\item{o}{A tibble containing OCB data.}
+\item{csf}{A tibble containing CSF data.}
 
 \item{chol}{A tibble containing cholesterol data.}
 }
 \value{
 A tibble with data.
+\describe{
+\item{id}{Numeric denoting patient's ID.}
+\item{gender}{Character, \code{"M"} males, \code{"F"} females.}
+\item{aggressive}{Numeric denoting aggressive MS.}
+\item{Platform_5}{Proportion of time using Platform
+during the first 5 years of disease.}
+\item{Platform_10}{Proportion of time using Platform
+during the first 10 years of disease.}
+\item{HET_5}{Proportion of time using HET
+during the first 5 years of disease.}
+\item{HET_10}{Proportion of time using HET
+during the first 10 years of disease.}
+\item{LE_HET_5}{Proportion of time using LE HET
+during the first 5 years of disease.}
+\item{LEHET_10}{Proportion of time using LE HET
+during the first 10 years of disease.}
+\item{time_to_treat}{Years it took before the first
+treatment.}
+\item{relapse_count}{Number of relapses during the
+first 10 years of disease.}
+\item{t2_lesions_volume_y2}{Volume in mms of T2 lesions in
+MRI within the first two years of disease course.}
+\item{t1_blackholes_volume_y2}{Volume in mms of T1 blackholes
+in MRI within the first two years of disease course.}
+\item{normalised_brain_atrophz_bpf_sv_y2}{Brain atrophy normalised
+by TBV within the first two years of disease course.}
+\item{t1_tbv_sv_y2}{Total brain volume in T1 within
+the first two years of disease course.}
+\item{corpus_callosum_volume_y2}{Corpus callosum volume in
+mm within the first two years of disease course.}
+\item{mri_years_before_y2}{How many years before year-two
+of disease was MRI measured?}
+\item{t2_lesions_volume_y5}{Volume in mms of T2 lesions in
+MRI within the first five years of disease course.}
+\item{t1_blackholes_volume_y5}{Volume in mms of T1 blackholes
+in MRI within the first five years of disease course.}
+\item{normalised_brain_atrophz_bpf_sv_y5}{Brain atrophy normalised
+by TBV within the first five years of disease course.}
+\item{t1_tbv_sv_y5}{Total brain volume in T1 within
+the first five years of disease course.}
+\item{corpus_callosum_volume_y5}{Corpus callosum volume in
+mm within the first five years of disease course.}
+\item{mri_years_before_y5}{How many years before year-five
+of disease was MRI measured?}
+\item{t2_lesions_volume_y10}{Volume in mms of T2 lesions in
+MRI within the first ten years of disease course.}
+\item{t1_blackholes_volume_y10}{Volume in mms of T1 blackholes
+in MRI within the first ten years of disease course.}
+\item{normalised_brain_atrophz_bpf_sv_y10}{Brain atrophy normalised
+by TBV within the first ten years of disease course.}
+\item{t1_tbv_sv_y10}{Total brain volume in T1 within
+the first ten years of disease course.}
+\item{corpus_callosum_volume_y10}{Corpus callosum volume in
+mm within the first ten years of disease course.}
+\item{mri_years_before_y10}{How many years before year-ten
+of disease was MRI measured?}
+}
 }
 \description{
-Preprocess potential predictors.
+Loops through treatment, MRI, and relapse predictors
+and preprocess them.
 }
 \examples{
 \dontrun{
-raw_data <- here::here("data-raw", "some-cool-file-name.xlsx") |>
-  prepare_data()
+raw_data <- here::here("data-raw", "some_cool_file_name.xlsx") |>
+  prepare_data(here::here("data-raw", "patients_with_informed_consent.xlsx"))
 clas_data <- determine_aggressive_phenotype(
-  d$id, d$relapses, d$edss, eye_check = TRUE
+  d$id,
+  d$relapses,
+  d$edss,
+  eye_check = TRUE
 )
 df <- preprocess_predictors(
   d0 = clas_data$data,
-  t = raw_data$treatment,
-  r = raw_data$relapses,
-  m = raw_data$mri,
-  c = raw_data$csf,
-  o = raw_data$ocb,
+  treat = raw_data$treatment,
+  rel = raw_data$relapses,
+  mri = raw_data$mri,
+  csf = raw_data$csf,
   chol = raw_data$cholesterol
 )
 }

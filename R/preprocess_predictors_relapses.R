@@ -1,7 +1,6 @@
 #' Preprocess relapse counts.
 #'
-#'
-#' @param d A tibble with the original treatment data.
+#' @param d A tibble with the original relapse data.
 #' @param onset A tibble containing id/disease onset pairs.
 #'
 #' @return A tibble with data.
@@ -9,13 +8,16 @@
 #' @export
 preprocess_predictors_relapses <- function(d, onset) {
   d |>
-    left_join(
+    dplyr::left_join(
       onset |>
-        mutate(plus10 = onset + years(10)),
-      by = join_by(id)
+        dplyr::mutate(plus10 = onset + lubridate::years(10)),
+      by = dplyr::join_by(id)
     ) |>
-    filter(relapse_date < plus10) |>
-    drop_na() |>
-    group_by(id) |>
-    summarise(relapse_count = n(), .groups = "drop")
+    dplyr::filter(relapse_date < plus10) |>
+    tidyr::drop_na() |>
+    dplyr::group_by(id) |>
+    dplyr::summarise(
+      relapse_count = dplyr::n(),
+      .groups = "drop"
+    )
 }
