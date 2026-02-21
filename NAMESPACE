@@ -3,6 +3,7 @@
 export(add_time_to_event)
 export(determine_aggressive_phenotype)
 export(extract_ids)
+export(plot_missingness)
 export(prepare_data)
 export(preprocess_predictors)
 export(preprocess_predictors_mri)

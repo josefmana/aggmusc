@@ -4,11 +4,13 @@
 \alias{preprocess_predictors}
 \title{Preprocess potential predictors}
 \usage{
-preprocess_predictors(d0, treat, rel, mri, csf, chol)
+preprocess_predictors(d0, edss, treat, rel, mri, csf, chol)
 }
 \arguments{
 \item{d0}{A tibble containing data pre-processed by
 \code{determine_aggressive_phenotype}.}
+
+\item{edss}{A tibble containing EDSS examinations.}
 
 \item{treat}{A tibble containing treatment variables.}
 
@@ -24,19 +26,24 @@ preprocess_predictors(d0, treat, rel, mri, csf, chol)
 A tibble with data.
 \describe{
 \item{id}{Numeric denoting patient's ID.}
-\item{gender}{Character, \code{"M"} males, \code{"F"} females.}
 \item{aggressive}{Numeric denoting aggressive MS.}
-\item{Platform_5}{Proportion of time using Platform
+\item{sex}{Biological sex coded as factor, \code{0} females,
+\code{1} males.}
+\item{age_onset}{Age at symptom onset in years.}
+\item{first_visit_dur}{Disease duration in years during
+the first EDSS assessment.}
+\item{first_edss}{First EDSS score.}
+\item{platform_y5}{Proportion of time using Platform
 during the first 5 years of disease.}
-\item{Platform_10}{Proportion of time using Platform
+\item{platform_y10}{Proportion of time using Platform
 during the first 10 years of disease.}
-\item{HET_5}{Proportion of time using HET
+\item{het_y5}{Proportion of time using HET
 during the first 5 years of disease.}
-\item{HET_10}{Proportion of time using HET
+\item{het_y10}{Proportion of time using HET
 during the first 10 years of disease.}
-\item{LE_HET_5}{Proportion of time using LE HET
+\item{le_het_y5}{Proportion of time using LE HET
 during the first 5 years of disease.}
-\item{LEHET_10}{Proportion of time using LE HET
+\item{le_het_y10}{Proportion of time using LE HET
 during the first 10 years of disease.}
 \item{time_to_treat}{Years it took before the first
 treatment.}
@@ -46,7 +53,7 @@ first 10 years of disease.}
 MRI within the first two years of disease course.}
 \item{t1_blackholes_volume_y2}{Volume in mms of T1 blackholes
 in MRI within the first two years of disease course.}
-\item{normalised_brain_atrophz_bpf_sv_y2}{Brain atrophy normalised
+\item{normalised_brain_atrophy_bpf_sv_y2}{Brain atrophy normalised
 by TBV within the first two years of disease course.}
 \item{t1_tbv_sv_y2}{Total brain volume in T1 within
 the first two years of disease course.}
@@ -58,7 +65,7 @@ of disease was MRI measured?}
 MRI within the first five years of disease course.}
 \item{t1_blackholes_volume_y5}{Volume in mms of T1 blackholes
 in MRI within the first five years of disease course.}
-\item{normalised_brain_atrophz_bpf_sv_y5}{Brain atrophy normalised
+\item{normalised_brain_atrophy_bpf_sv_y5}{Brain atrophy normalised
 by TBV within the first five years of disease course.}
 \item{t1_tbv_sv_y5}{Total brain volume in T1 within
 the first five years of disease course.}
@@ -70,7 +77,7 @@ of disease was MRI measured?}
 MRI within the first ten years of disease course.}
 \item{t1_blackholes_volume_y10}{Volume in mms of T1 blackholes
 in MRI within the first ten years of disease course.}
-\item{normalised_brain_atrophz_bpf_sv_y10}{Brain atrophy normalised
+\item{normalised_brain_atrophy_bpf_sv_y10}{Brain atrophy normalised
 by TBV within the first ten years of disease course.}
 \item{t1_tbv_sv_y10}{Total brain volume in T1 within
 the first ten years of disease course.}
@@ -96,6 +103,7 @@ clas_data <- determine_aggressive_phenotype(
 )
 df <- preprocess_predictors(
   d0 = clas_data$data,
+  edss = raw_data$edss,
   treat = raw_data$treatment,
   rel = raw_data$relapses,
   mri = raw_data$mri,

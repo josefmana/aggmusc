@@ -1,0 +1,78 @@
+---
+title: "Data Import"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Data Import}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  out.width = "750px",
+  dpi = 200
+)
+```
+
+In this report, I showcase data import procedures and basic data description for the `aggmusc` (**Agg**ressive **Mu**ltiple **Sc**lerosis) project wherein the goal is to identify the most significant predictors among a set of reasonable candidate predictors of an aggressive phenotype of Multiple Sclerosis (MS).
+
+```{r setup}
+library(aggmusc)
+```
+
+# Step 1: Define Aggressive MS
+
+The primary outcome of this report is the `determine_aggressive_phenotype()` function which implements an algorithm diagnosing aggressive phenotype of MS to a sample of patients eligible for this study. The function is based on Expanded Disability Status Scale (EDSS) measurement taken at least half a year away from a relapse, and takes the following steps:
+
+1. Exclude patients with less than four EDSS measurements.
+2. Exclude patients with Primary Progressive phenotype of MS.
+3. Exclude patients with less than 10 years of disease duration.
+4. Label MS of patients with **no** $EDSS \ge 6$ during the first 10 years as *non-agressive*.
+5. Label MS of patients who did **not** sustain $EDSS \ge 6$ for more than 6 months as *non-agressive*.
+6. Label MS of patients who did **not** sustain $EDSS \ge 6$ until the end of observation period as *non-agressive*.
+7. Label MS of the remaining patients as *aggressive*.
+
+Moreover, the function prepares and prints a text summarising the process and allows for an eye check of the data of the patients diagnosed with aggressive MS for control.
+
+## Determining Aggressive MS
+
+```{r demo, warning=FALSE}
+
+# Data were saved on an external hard drive
+data_path <- "/Volumes/Extreme SSD/aggrescler/imed_export_20250328_data.xlsx"
+valid_path <- "/Volumes/Extreme SSD/aggrescler/patients_with_signed IC_202505_REMUS.xlsx" # Patients who signed informed consent and agreed to be included in the study
+
+raw_data <- prepare_data(
+  dp = data_path,
+  ip = valid_path
+)
+
+classified_data <- determine_aggressive_phenotype(
+  demographics = raw_data$id,
+  relapses = raw_data$relapses,
+  edss = raw_data$edss,
+  eye_check = TRUE
+)
+```
+
+# Step 2: Preprocess Predictor Variables
+
+The next step is to prepare predictor pool of variables that are used to help understand the risk associated with aggressive form of MS. The following predictors were prepared:
+
+- **Treatment variables:**
+  - Percentage of time spent using Platform (1^st^ line) medication during the first 5 and 10 years of disease.
+  - Percentage of time spent using HET (2^nd^ line) medication during the first 5 and 10 years of disease.
+  - Percentage of time spent using LE HET (2^nd^ line) medication during the first 5 and 10 years of disease.
+  - Time to first medication (Platform, HET or LE HET).
+- **Symptoms:**:
+  - Number of relapses during the first 10 years of the disease.
+- **MRI variables:**
+  - T2 lesions volume at the closes point before years 2, 5 and 10 of the disease course.
+  - T1 blacholes volume at the closes point before years 2, 5 and 10 of the disease course.
+  - Brain Atrophy at the closes point before years 2, 5 and 10 of the disease course.
+  - T1 TBV at the closes point before years 2, 5 and 10 of the disease course.
+  - Corpus Callosum volume at the closes point before years 2, 5 and 10 of the disease course.
+
+Preprocessing of these variables is implemented in the function `preprocess_predictors()`.

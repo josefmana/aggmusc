@@ -53,7 +53,10 @@ p1 <- here::here("data-raw", "some_cool_file_name.xlsx")
 p2 <- here::here("data-raw", "patients_with_informed_consent.xlsx")
 d <- prepare_data(p1, p2)
 outcome_data <- determine_aggressive_phenotype(
-  d$id, d$relapses, d$edss, eye_check = TRUE
+  demographics = d$id,
+  relapses = d$relapses,
+  edss = d$edss,
+  eye_check = TRUE
 )
 }
 

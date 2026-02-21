@@ -42,6 +42,7 @@ list(
     name = finished_data,
     command = preprocess_predictors(
       d0 = classified_data$data,
+      edss = raw_data$edss,
       treat = raw_data$treatment,
       rel = raw_data$relapses,
       mri = raw_data$mri,

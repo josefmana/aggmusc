@@ -39,7 +39,10 @@
 #' p2 <- here::here("data-raw", "patients_with_informed_consent.xlsx")
 #' d <- prepare_data(p1, p2)
 #' outcome_data <- determine_aggressive_phenotype(
-#'   d$id, d$relapses, d$edss, eye_check = TRUE
+#'   demographics = d$id,
+#'   relapses = d$relapses,
+#'   edss = d$edss,
+#'   eye_check = TRUE
 #' )
 #' }
 #'
@@ -74,16 +77,20 @@ determine_aggressive_phenotype <- function(
   N0 <- length(unique_ids) # Original number of patients
 
   # Patients must have at least four EDSS measurements
+  # and at least one before ten years of disease duration
   lowobs_ids <- d0 |>
     dplyr::group_by(id) |>
-    dplyr::summarise(obs = dplyr::n()) |>
-    dplyr::filter(obs < 4) |>
+    dplyr::summarise(
+      obs = dplyr::n(),
+      min_time = min(edss_time)
+    ) |>
+    dplyr::filter(obs < 4 | min_time > 10) |>
     dplyr::pull(id)
   no_lowobs <- length(lowobs_ids)
   d1 <- subset(d0, !id %in% lowobs_ids)
   incl_ids0 <- unique(d1$id)
   cli::cli_alert_warning(
-    "Dropped {no_lowobs} out of {N0} patients with less than four EDSS measurements."
+    "Dropped {no_lowobs} out of {N0} patients with less than four EDSS measurements or no EDSS before ten years of disease duration."
   )
 
   # Primary progressive phenotype disqualifies AMS
@@ -211,38 +218,46 @@ determine_aggressive_phenotype <- function(
     bins <- rep(seq_len(ceiling(length(aggressiveMSids)/9)), 9) |>
       sort()
     spl <- split(aggressiveMSids, bins)
-    pb <- txtProgressBar(min = 0, max = length(spl), style = 3) # text based bar
     for (i in seq_len(length(spl))) {
       plt <- d5 |>
         dplyr::filter(id %in% spl[[i]]) |>
         dplyr::mutate(`Following relapse` = dplyr::if_else(days_after_relapse < 30, TRUE, FALSE)) |>
         ggplot2::ggplot() +
         ggplot2::aes(x = edss_time, y = edss, group = id) +
-        ggplot2::geom_point(size = 1.3, ggplot2::aes(colour = `Following relapse`)) +
+        ggplot2::geom_point(size = 1, ggplot2::aes(colour = `Following relapse`)) +
         ggplot2::geom_line() +
         ggplot2::scale_colour_manual(values = c("black", "red3")) +
-        ggplot2::geom_vline(xintercept = 10, colour = "red", linetype = "dashed") +
-        ggplot2::geom_hline(yintercept = 6, colour = "red", linetype = "dashed") +
-        ggplot2::facet_wrap(~id, ncol = 3) +
-        ggplot2::labs(x = "Disease duration at assessment (years)", y = "EDSS")
+        ggplot2::geom_vline(
+          xintercept = 10,
+          colour = "red",
+          linetype = "dashed",
+          linewidth = 0.4
+        ) +
+        ggplot2::geom_hline(
+          yintercept = 6,
+          colour = "red",
+          linetype = "dashed",
+          linewidth = 0.4
+        ) +
+        ggplot2::facet_wrap(~ id, ncol = 3) +
+        ggplot2::labs(x = "Disease duration at assessment (years)", y = "EDSS") +
+        ggplot2::theme(legend.position = "none")
       plot(plt)
-      setTxtProgressBar(pb, i)
-      Sys.sleep(20)
     }
-    close(pb)
   }
   # Prepare a text summarising the process:
   txt <- glue::glue(
     "Data from {N0} patients were extracted from a local database. Out of these,
-{no_lowobs} were excluded due to having less than four EDSS observations,
-and {no_pp} were excluded due to a diagnosis of primary progressive multiple
-sclerosis or missing phenotype information. Out of the remaining {N2}
-patients, {N3} patients met the criterion of a minimum of 10 years observation
-time, as defined by recorded EDSS scores. Of these, {no_late} patients did
-not meet the criterion of EDSS at least 6 within the first 10 years of disease.
-Further {no_sus} patients did not meet the criterion of sustaining EDSS at least 6
-until the end of the observation logitudinally. The final sample thus comprised
-{N3} patients, of whom {K} ({perc_aggr}) met criteria for aggressive disease."
+    {no_lowobs} were excluded due to having less than four EDSS observations or
+    no observations before 10 years of disease duration, and {no_pp} were excluded
+    due to a diagnosis of primary progressive multiple sclerosis or missing phenotype
+    information. Out of the remaining {N2} patients, {N3} patients met the criterion of
+    a minimum of 10 years observation time, as defined by recorded EDSS scores. Of these,
+    {no_late} patients did not meet the criterion of EDSS at least 6 within the first
+    10 years of disease. Further {no_sus} patients did not meet the criterion of sustaining
+    EDSS at least 6 until the end of the observation logitudinally. The final sample
+    thus comprised {N3} patients, of whom {K} ({perc_aggr}) met criteria for aggressive
+    disease."
   )
   cli::cli_alert_success(txt)
 
