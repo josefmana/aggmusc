@@ -38,8 +38,7 @@ Moreover, the function prepares and prints a text summarising the process and al
 
 ## Determining Aggressive MS
 
-```{r demo, warning=FALSE}
-
+```{r classification-demo, warning=FALSE}
 # Data were saved on an external hard drive
 data_path <- "/Volumes/Extreme SSD/aggrescler/imed_export_20250328_data.xlsx"
 valid_path <- "/Volumes/Extreme SSD/aggrescler/patients_with_signed IC_202505_REMUS.xlsx" # Patients who signed informed consent and agreed to be included in the study
@@ -61,6 +60,11 @@ classified_data <- determine_aggressive_phenotype(
 
 The next step is to prepare predictor pool of variables that are used to help understand the risk associated with aggressive form of MS. The following predictors were prepared:
 
+- **Demographical/clinical variables:**
+  - Biological sex.
+  - Age at disease onset.
+  - Disease duration at the first visit.
+  - First EDSS score.
 - **Treatment variables:**
   - Percentage of time spent using Platform (1^st^ line) medication during the first 5 and 10 years of disease.
   - Percentage of time spent using HET (2^nd^ line) medication during the first 5 and 10 years of disease.
@@ -70,9 +74,27 @@ The next step is to prepare predictor pool of variables that are used to help un
   - Number of relapses during the first 10 years of the disease.
 - **MRI variables:**
   - T2 lesions volume at the closes point before years 2, 5 and 10 of the disease course.
-  - T1 blacholes volume at the closes point before years 2, 5 and 10 of the disease course.
+  - T1 blackholes volume at the closes point before years 2, 5 and 10 of the disease course.
   - Brain Atrophy at the closes point before years 2, 5 and 10 of the disease course.
   - T1 TBV at the closes point before years 2, 5 and 10 of the disease course.
   - Corpus Callosum volume at the closes point before years 2, 5 and 10 of the disease course.
 
 Preprocessing of these variables is implemented in the function `preprocess_predictors()`.
+
+```{r predictors-demo, warning=FALSE}
+finished_data <- preprocess_predictors(
+  d0 = classified_data$data,
+  edss = raw_data$edss,
+  treat = raw_data$treatment,
+  rel = raw_data$relapses,
+  mri = raw_data$mri,
+  csf = raw_data$csf,
+  chol = raw_data$cholesterol
+)
+```
+
+Following diagram shows completeness of the data, with patients in rows (split to patients classified as without on top or with aggressive MS on bottom) and predictors in columns, both sorted such that the most complete data sets are closer to the origin:
+
+``` {r completeness}
+plot_missingness(finished_data)
+```

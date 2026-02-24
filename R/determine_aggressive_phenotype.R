@@ -218,7 +218,7 @@ determine_aggressive_phenotype <- function(
     bins <- rep(seq_len(ceiling(length(aggressiveMSids)/9)), 9) |>
       sort()
     spl <- split(aggressiveMSids, bins)
-    for (i in seq_len(length(spl))) {
+    for (i in seq_along(spl)) {
       plt <- d5 |>
         dplyr::filter(id %in% spl[[i]]) |>
         dplyr::mutate(`Following relapse` = dplyr::if_else(days_after_relapse < 30, TRUE, FALSE)) |>

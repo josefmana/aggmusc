@@ -5,8 +5,6 @@
 #' @param onset A tibble containing id/disease onset pairs.
 #'
 #' @return A tibble with data.
-#'
-#' @export
 preprocess_predictors_mri <- function(d, onset) {
   d1 <- d |>
     dplyr::left_join(

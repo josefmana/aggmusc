@@ -81,9 +81,9 @@
 #' raw_data <- here::here("data-raw", "some_cool_file_name.xlsx") |>
 #'   prepare_data(here::here("data-raw", "patients_with_informed_consent.xlsx"))
 #' clas_data <- determine_aggressive_phenotype(
-#'   d$id,
-#'   d$relapses,
-#'   d$edss,
+#'   raw_data$id,
+#'   raw_data$relapses,
+#'   raw_data$edss,
 #'   eye_check = TRUE
 #' )
 #' df <- preprocess_predictors(
