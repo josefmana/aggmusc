@@ -202,3 +202,192 @@ preprocess_predictors <- function(
       mri_years_before_y10 = mri_years_before_y10
     )
 }
+
+#' Preprocess MRI data.
+#'
+#'
+#' @param d A tibble with the original MRI data.
+#' @param onset A tibble containing id/disease onset pairs.
+#'
+#' @return A tibble with data.
+preprocess_predictors_mri <- function(d, onset) {
+  d1 <- d |>
+    dplyr::left_join(
+      onset |>
+        dplyr::mutate(
+          plus2 = onset + lubridate::years(2),
+          plus5 = onset + lubridate::years(5),
+          plus10 = onset + lubridate::years(10)
+        ),
+      by = dplyr::join_by(id)
+    ) |>
+    dplyr::mutate(
+      close2 = lubridate::time_length(difftime(plus2, mri_date), unit = "years"),
+      close5 = lubridate::time_length(difftime(plus5, mri_date), unit = "years"),
+      close10 = lubridate::time_length(difftime(plus10, mri_date), unit = "years")
+    )
+
+  ints <- c(
+    rlang::quo(close2),
+    rlang::quo(close5),
+    rlang::quo(close10)
+  )
+
+  dates <- purrr::map_dfr(ints, function(i) {
+    y <- readr::parse_number(rlang::quo_text(i))
+    d1 |>
+      dplyr::filter(!!i > 0) |>
+      dplyr::group_by(id) |>
+      dplyr::summarise(
+        date = mri_date[which(!!i == min(!!i, na.rm = TRUE))],
+        .groups = "drop"
+      ) |>
+      tibble::add_column(post = y)
+  }) |>
+    tidyr::pivot_wider(
+      names_from = "post",
+      values_from = "date",
+      id_cols = "id"
+    )
+
+  # If the date of all is the same, it must
+  # have been sooner rather than later
+  for (i in seq_len(nrow(dates))) {
+    if (sum(is.na(dates[i, ])) < 2) {
+      if (isTRUE(all.equal(dates$`2`[i], dates$`5`[i], dates$`10`[i]))) {
+        dates$`5`[i] <- dates$`10`[i] <- NA
+      }
+    }
+  }
+
+  onset |>
+    dplyr::select(id) |>
+    dplyr::left_join(
+      lapply(ints, function(i) {
+        y <- readr::parse_number(rlang::quo_text(i))
+        onset |>
+          dplyr::select(-onset) |>
+          dplyr::left_join(
+            d1 |>
+              dplyr::left_join(dates, by = dplyr::join_by(id)) |>
+              dplyr::mutate(keep = mri_date == .data[[as.character(y)]]) |>
+              dplyr::filter(keep) |>
+              dplyr::select(
+                id,
+                t2_lesions_volume,
+                t1_blackholes_volume,
+                normalised_brain_atrophz_bpf_sv,
+                t1_tbv_sv,
+                corpus_callosum_volume,
+                !!i
+              ) |>
+              dplyr::rename("mri_years_before" = !!i) |>
+              dplyr::rename_with(\(x) paste0(x, "_y", y), -c("id")),
+            by = dplyr::join_by(id)
+          )
+      }) |>
+        purrr::reduce(
+          dplyr::left_join,
+          by = dplyr::join_by(id)
+        ),
+      by = dplyr::join_by(id)
+    )
+}
+
+#' Preprocess relapse counts.
+#'
+#' @param d A tibble with the original relapse data.
+#' @param onset A tibble containing id/disease onset pairs.
+#'
+#' @return A tibble with data.
+preprocess_predictors_relapses <- function(d, onset) {
+  d |>
+    dplyr::left_join(
+      onset |>
+        dplyr::mutate(plus10 = onset + lubridate::years(10)),
+      by = dplyr::join_by(id)
+    ) |>
+    dplyr::filter(relapse_date < plus10) |>
+    tidyr::drop_na(relapse_date) |> # Keeps data with no severity rating
+    dplyr::group_by(id) |>
+    dplyr::summarise(
+      relapse_count = dplyr::n(),
+      .groups = "drop"
+    )
+}
+
+#' Preprocess treatment variables.
+#'
+#' @param d A tibble with the original treatment data.
+#' @param onset A tibble containing id/disease onset pairs.
+#'
+#' @return A tibble with data.
+preprocess_predictors_treatment <- function(d, onset) {
+  d1 <- d |>
+    dplyr::left_join(
+      onset |>
+        dplyr::mutate(
+          plus5 = onset + lubridate::years(5),
+          plus10 = onset + lubridate::years(10)
+        ),
+      by = dplyr::join_by(id)
+    ) |>
+    dplyr::mutate(
+      treatment = factor(
+        dplyr::case_when(
+          dmt_effect == "Platform" ~ 1,
+          dmt_effect == "HET" ~ 2,
+          dmt_effect == "LE_HET" ~ 3
+        ),
+        levels = 1:3,
+        labels = c("Platform", "HET", "LE_HET")
+      ),
+      end_date = dplyr::if_else(
+        is.na(end_date), as.Date("2024-12-31"), end_date
+      ),
+      duration = lubridate::time_length(
+        difftime(end_date, start_date),
+        unit = "year"
+      )
+    ) |>
+    dplyr::filter(duration > 0) |>
+    tidyr::drop_na()
+
+  tt <- purrr::map_dfr(c(rlang::quo(plus5), rlang::quo(plus10)), function(i) {
+    y <- readr::parse_number(rlang::quo_text(i))
+    d1 |>
+      dplyr::filter(start_date < !!i) |>
+      dplyr::mutate(
+        end_date = !!i,
+        duration = lubridate::time_length(
+          difftime(end_date, start_date),
+          unit = "year"
+        )
+      ) |>
+      dplyr::group_by(id, treatment) |>
+      dplyr::summarise(treatment_time = max(duration) / y, .groups = "drop") |>
+      tidyr::pivot_wider(names_from = "treatment", values_from = "treatment_time") |>
+      tibble::add_column(years = y)
+  }) |>
+    tidyr::pivot_wider(
+      names_from = "years",
+      values_from = c("Platform", "HET", "LE_HET"),
+      id_cols = "id"
+    ) |>
+    dplyr::mutate_all(\(x) dplyr::if_else(is.na(x), 0, x))
+
+  ttt <- d1 |>
+    dplyr::group_by(id) |>
+    dplyr::summarise(
+      time_to_treat = min(lubridate::time_length(
+        difftime(start_date, onset),
+        unit = "year"
+      )),
+      .groups = "drop"
+    )
+
+  onset |>
+    dplyr::left_join(tt, by = "id") |>
+    dplyr::left_join(ttt, by = "id") |>
+    dplyr::select(-onset)
+}
