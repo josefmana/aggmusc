@@ -1,0 +1,253 @@
+---
+title: "Pilot analysis – clinical & treatment profiles"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Pilot analysis - clinical & treatment profiles}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+In this report, I run preliminary descriptive regression analyses aiming at describing probability of *"aggmusc"* (**Agg**ressive **Mu**ltiple **Sc**lerosis) given *demographic and clinical* (age at onset, sex, first recorded EDSS, disease duration at the time of the first visit and number of relapses during the first ten years of disease course), and 10-year *treatment profile* (percentage spent treated via Platform, HET and LE HET treatment types) variables.
+
+```{r setup, message=FALSE}
+library(aggmusc)
+library(dplyr)           # data wrangling
+library(ggplot2)         # visualisation
+library(marginaleffects) 
+```
+
+---
+
+## Data
+
+Data preprocessing process is detailed in the [Data Import vignette](data_import.html).
+
+```{r data, warning=FALSE, message=FALSE, cache=TRUE}
+data_path  <- "/Volumes/Extreme SSD/aggrescler/imed_export_20250328_data.xlsx"
+valid_path <- "/Volumes/Extreme SSD/aggrescler/patients_with_signed IC_202505_REMUS.xlsx"
+
+data_raw <- prepare_data(data_path, valid_path)
+
+data_classified <- with(data_raw, determine_aggressive_phenotype(
+  id, relapses, edss, eye_check = FALSE
+))
+
+df <- with(data_raw, preprocess_predictors(
+  d0    = data_classified$data,
+  edss  = edss,
+  treat = treatment,
+  rel   = relapses,
+  mri   = mri,
+  csf   = csf,
+  chol  = cholesterol
+))
+
+df_model <-
+  df |>
+  mutate(across(
+      c(platform_y10, het_y10, le_het_y10),
+      .fns = \(x) if_else(is.na(x), 0, x)
+  )) |>
+  select(
+    id,
+    aggmusc         = aggressive,
+    sex,
+    age_onset,
+    dur_first_visit = first_visit_dur,
+    edss_first      = first_edss,
+    relapse_count,
+    platform        = platform_y10,
+    het             = het_y10,
+    le_het          = le_het_y10
+  ) |>
+  tidyr::drop_na()
+```
+
+## Modelling
+
+```{r modelling}
+# ── Model ─────────────────────────────────────────────────────────────────────
+fit <- glm(
+  aggmusc ~
+    age_onset +
+    edss_first * dur_first_visit +
+    relapse_count +
+    splines::ns(platform, 3) +
+    het +
+    le_het,
+  data = df_model,
+  family = binomial()
+)
+
+# ── Prediction function ───────────────────────────────────────────────────────
+make_curve <- function(var, values, df, fit) {
+  base <-
+    df |>
+    summarise(
+      age_onset       = median(age_onset),
+      dur_first_visit = median(dur_first_visit),
+      edss_first      = median(edss_first),
+      relapse_count   = median(relapse_count),
+      platform        = median(platform),
+      het             = median(het),
+      le_het          = median(le_het)
+    )
+    
+    grid <- base[rep(1, length(values)), ]
+    grid[[var]] <- values
+    
+    preds <- predictions(
+      fit,
+      newdata = grid,
+      type = "response"
+    )
+    
+    tibble(
+      var       = var,
+      x         = values,
+      pred      = preds$estimate,
+      conf_low  = preds$conf.low,
+      conf_high = preds$conf.high
+    )
+}
+
+# ── Build curves ──────────────────────────────────────────────────────────────
+curves <- bind_rows(
+  make_curve("age_onset",       seq(5, 67, by = 1),   df_model, fit),
+  make_curve("dur_first_visit", seq(0, 10, by = 0.5), df_model, fit),
+  make_curve("edss_first",      seq(0, 7, by = 0.2),  df_model, fit),
+  make_curve("relapse_count",   seq(0, 22, by = 1),   df_model, fit),
+  make_curve("platform",        seq(0, 1, by = 0.05), df_model, fit),
+  make_curve("het",             seq(0, 1, by = 0.05), df_model, fit),
+  make_curve("le_het",          seq(0, 1, by = 0.05), df_model, fit)
+)
+
+# ── Long data ─────────────────────────────────────────────────────────────────
+df_long <-
+  df_model |>
+  tidyr::pivot_longer(
+    cols = c(age_onset, dur_first_visit, edss_first,
+             relapse_count, platform, het, le_het),
+    names_to = "var",
+    values_to = "value"
+  )
+
+# ── Density scale ─────────────────────────────────────────────────────────────
+dens_max <-
+  df_long |>
+  group_by(var) |>
+  summarise(
+    max_density = max(density(value)$y, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# ── Scale curves ──────────────────────────────────────────────────────────────
+curves <- 
+  curves |>
+  left_join(dens_max, by = "var") |>
+  group_by(var) |>
+  mutate(
+    scale_factor     = max_density / max(conf_high, na.rm = TRUE),
+    pred_scaled      = pred      * scale_factor,
+    conf_low_scaled  = conf_low  * scale_factor,
+    conf_high_scaled = conf_high * scale_factor
+  ) |>
+  ungroup()
+
+# ── Variable names ────────────────────────────────────────────────────────────
+var_labels <- c(
+  age_onset       = "Age at onset (years)",
+  het             = "Time on HET (within 10 years)",
+  dur_first_visit = "Disease duration at first visit (years)",
+  le_het          = "Time on LE HET (within 10 years)",
+  edss_first      = "First EDSS",
+  platform        = "Time on Platform (within 10 years)",
+  relapse_count   = "Number of relapses (within 10 years)"
+)
+
+df_long$var <- factor(
+  df_long$var,
+  levels = names(var_labels)
+)
+
+curves$var <- factor(
+  curves$var,
+  levels = levels(df_long$var)
+)
+
+# ── Second ordinates ──────────────────────────────────────────────────────────
+sec_scales <- lapply(levels(curves$var), function(v) {
+  df_var <- subset(curves, var == v)
+  sf <- unique(df_var$scale_factor)
+  
+  scale_y_continuous(
+    sec.axis = sec_axis(
+      trans = \(x) x / sf,
+      name = "Predicted probability"
+    )
+  )
+})
+
+# ── Plot ──────────────────────────────────────────────────────────────────────
+df_long |>
+  ggplot() +
+  aes(x = value, fill = factor(aggmusc)) +
+  geom_density(alpha = 0.4) +
+    
+  geom_ribbon(
+    data = curves,
+    aes(x = x, ymin = conf_low_scaled, ymax = conf_high_scaled),
+    inherit.aes = FALSE,
+    fill = "red",
+    alpha = 0.15
+  ) +
+    
+  geom_line(
+    data = curves,
+    aes(x = x, y = pred_scaled),
+    inherit.aes = FALSE,
+    color = "red",
+    linewidth = 1
+  ) +
+  
+  facet_wrap(
+    ~ var,
+    scales = "free",
+    ncol = 2,
+    labeller = as_labeller(var_labels)
+  ) +
+  
+  ggh4x::facetted_pos_scales(
+    y = sec_scales
+  ) +
+  
+  coord_cartesian(ylim = c(0, NA)) +
+  
+  scale_fill_manual(
+    values = c("gray30", "skyblue"),
+    labels = c("Non-aggressive", "Aggressive")
+  ) +
+  
+  labs(
+    x = "Value",
+    y = "Density",
+    fill = "Phenotype"
+  ) +
+    
+  theme_classic(base_size = 14) +
+  theme(
+    legend.position = "bottom",
+    strip.text = element_text(face = "bold"),
+    panel.grid.minor = element_blank(),
+    panel.spacing = unit(1.2, "lines"),
+    axis.title = element_text(face = "bold"),
+    legend.title = element_text(face = "bold")
+  )
+```

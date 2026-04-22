@@ -38,7 +38,7 @@ Moreover, the function prepares and prints a text summarising the process and al
 
 ## Determining Aggressive MS
 
-```{r classification-demo, warning=FALSE}
+```{r classification-demo, warning=FALSE, cache=TRUE}
 # Data were saved on an external hard drive
 data_path <- "/Volumes/Extreme SSD/aggrescler/imed_export_20250328_data.xlsx"
 valid_path <- "/Volumes/Extreme SSD/aggrescler/patients_with_signed IC_202505_REMUS.xlsx" # Patients who signed informed consent and agreed to be included in the study
