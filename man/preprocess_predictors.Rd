@@ -49,6 +49,18 @@ during the first 10 years of disease.}
 treatment.}
 \item{relapse_count}{Number of relapses during the
 first 10 years of disease.}
+\item{t2_lesions_volume_first}{Volume in mms of T2 lesions in
+MRI at the first available assessment.}
+\item{t1_blackholes_volume_first}{Volume in mms of T1 blackholes
+in MRI at the first available assessment.}
+\item{normalised_brain_atrophy_bpf_sv_first}{Brain atrophy normalised
+by TBV at the first available assessment.}
+\item{t1_tbv_sv_first}{Total brain volume in T1 at the first available
+assessment.}
+\item{corpus_callosum_volume_first}{Corpus callosum volume in
+mm  at the first available assessment.}
+\item{first_mri_dur}{Disease duration in years during
+the first MRI assessment.}
 \item{t2_lesions_volume_y2}{Volume in mms of T2 lesions in
 MRI within the first two years of disease course.}
 \item{t1_blackholes_volume_y2}{Volume in mms of T1 blackholes
@@ -102,13 +114,13 @@ clas_data <- determine_aggressive_phenotype(
   eye_check = TRUE
 )
 df <- preprocess_predictors(
-  d0 = clas_data$data,
-  edss = raw_data$edss,
+  d0    = clas_data$data,
+  edss  = raw_data$edss,
   treat = raw_data$treatment,
-  rel = raw_data$relapses,
-  mri = raw_data$mri,
-  csf = raw_data$csf,
-  chol = raw_data$cholesterol
+  rel   = raw_data$relapses,
+  mri   = raw_data$mri,
+  csf   = raw_data$csf,
+  chol  = raw_data$cholesterol
 )
 }
 

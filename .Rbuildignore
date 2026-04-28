@@ -2,3 +2,5 @@
 ^\.Rproj\.user$
 ^LICENSE\.md$
 ^_nogit$
+^\.positai$
+^\.claude$

@@ -38,6 +38,18 @@
 #'         treatment.}
 #'   \item{relapse_count}{Number of relapses during the
 #'         first 10 years of disease.}
+#'   \item{t2_lesions_volume_first}{Volume in mms of T2 lesions in
+#'         MRI at the first available assessment.}
+#'   \item{t1_blackholes_volume_first}{Volume in mms of T1 blackholes
+#'         in MRI at the first available assessment.}
+#'   \item{normalised_brain_atrophy_bpf_sv_first}{Brain atrophy normalised
+#'         by TBV at the first available assessment.}
+#'   \item{t1_tbv_sv_first}{Total brain volume in T1 at the first available
+#'        assessment.}
+#'   \item{corpus_callosum_volume_first}{Corpus callosum volume in
+#'         mm  at the first available assessment.}
+#'   \item{first_mri_dur}{Disease duration in years during
+#'         the first MRI assessment.}
 #'   \item{t2_lesions_volume_y2}{Volume in mms of T2 lesions in
 #'         MRI within the first two years of disease course.}
 #'   \item{t1_blackholes_volume_y2}{Volume in mms of T1 blackholes
@@ -87,13 +99,13 @@
 #'   eye_check = TRUE
 #' )
 #' df <- preprocess_predictors(
-#'   d0 = clas_data$data,
-#'   edss = raw_data$edss,
+#'   d0    = clas_data$data,
+#'   edss  = raw_data$edss,
 #'   treat = raw_data$treatment,
-#'   rel = raw_data$relapses,
-#'   mri = raw_data$mri,
-#'   csf = raw_data$csf,
-#'   chol = raw_data$cholesterol
+#'   rel   = raw_data$relapses,
+#'   mri   = raw_data$mri,
+#'   csf   = raw_data$csf,
+#'   chol  = raw_data$cholesterol
 #' )
 #' }
 #'
@@ -108,12 +120,12 @@ preprocess_predictors <- function(
     chol
     ) {
   incl <- unique(d0$id)
-  t <- subset(treat, id %in% incl)
-  r <- subset(rel, id %in% incl)
-  m <- subset(mri, id %in% incl)
-  c <- subset(csf, id %in% incl)
+  t  <- subset(treat, id %in% incl)
+  r  <- subset(rel, id %in% incl)
+  m  <- subset(mri, id %in% incl)
+  c  <- subset(csf, id %in% incl)
   c2 <- subset(chol, id %in% incl)
-  e <- edss |>
+  e  <- edss |>
     dplyr::filter(id %in% incl) |>
     dplyr::group_by(id) |>
     dplyr::slice(1) |>
@@ -182,6 +194,12 @@ preprocess_predictors <- function(
       le_het_y10 = LE_HET_10,
       time_to_treat = time_to_treat,
       relapse_count = relapse_count,
+      t2_lesions_volume_first = t2_lesions_volume_first,
+      t1_blackholes_volume_first = t1_blackholes_volume_first,
+      normalised_brain_atrophy_bpf_sv_first = normalised_brain_atrophz_bpf_sv_first,
+      t1_tbv_sv_first = t1_tbv_sv_first,
+      corpus_callosum_volume_first = corpus_callosum_volume_first,
+      first_mri_dur = mri_duration_first,
       t2_lesions_volume_y2 = t2_lesions_volume_y2,
       t1_blackholes_volume_y2 = t1_blackholes_volume_y2,
       normalised_brain_atrophy_bpf_sv_y2 = normalised_brain_atrophz_bpf_sv_y2,
@@ -215,23 +233,44 @@ preprocess_predictors_mri <- function(d, onset) {
     dplyr::left_join(
       onset |>
         dplyr::mutate(
-          plus2 = onset + lubridate::years(2),
-          plus5 = onset + lubridate::years(5),
+          plus2  = onset + lubridate::years(2),
+          plus5  = onset + lubridate::years(5),
           plus10 = onset + lubridate::years(10)
         ),
       by = dplyr::join_by(id)
     ) |>
     dplyr::mutate(
-      close2 = lubridate::time_length(difftime(plus2, mri_date), unit = "years"),
-      close5 = lubridate::time_length(difftime(plus5, mri_date), unit = "years"),
+      mri_duration = lubridate::time_length(difftime(mri_date, onset),  unit = "years"),
+      close2  = lubridate::time_length(difftime(plus2, mri_date),  unit = "years"),
+      close5  = lubridate::time_length(difftime(plus5, mri_date),  unit = "years"),
       close10 = lubridate::time_length(difftime(plus10, mri_date), unit = "years")
     )
+
+  mri_vars <- c(
+    "t2_lesions_volume",
+    "t1_blackholes_volume",
+    "normalised_brain_atrophz_bpf_sv",
+    "t1_tbv_sv",
+    "corpus_callosum_volume",
+    "mri_duration"
+  )
 
   ints <- c(
     rlang::quo(close2),
     rlang::quo(close5),
     rlang::quo(close10)
   )
+
+  d_first <- d1 |>
+    dplyr::filter(mri_duration > 0) |>
+    dplyr::arrange(id, mri_duration) |>
+    dplyr::group_by(id) |>
+    summarise(dplyr::across(
+      .cols  = tidyselect::all_of(mri_vars),
+      .fns   = dplyr::first,
+      .names = "{.col}_first"
+    )) |>
+    dplyr::ungroup()
 
   dates <- purrr::map_dfr(ints, function(i) {
     y <- readr::parse_number(rlang::quo_text(i))
@@ -290,6 +329,10 @@ preprocess_predictors_mri <- function(d, onset) {
           dplyr::left_join,
           by = dplyr::join_by(id)
         ),
+      by = dplyr::join_by(id)
+    ) |>
+    dplyr::left_join(
+      d_first,
       by = dplyr::join_by(id)
     )
 }
