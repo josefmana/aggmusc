@@ -22,21 +22,31 @@
 #'   \item{first_visit_dur}{Disease duration in years during
 #'         the first EDSS assessment.}
 #'   \item{first_edss}{First EDSS score.}
+#'   \item{platform_y2}{Proportion of time using Platform
+#'         during the first 2 years of disease.}
 #'   \item{platform_y5}{Proportion of time using Platform
 #'         during the first 5 years of disease.}
 #'   \item{platform_y10}{Proportion of time using Platform
 #'         during the first 10 years of disease.}
+#'   \item{het_y2}{Proportion of time using HET
+#'         during the first 2 years of disease.}
 #'   \item{het_y5}{Proportion of time using HET
 #'         during the first 5 years of disease.}
 #'   \item{het_y10}{Proportion of time using HET
 #'         during the first 10 years of disease.}
+#'   \item{le_het_y2}{Proportion of time using LE HET
+#'         during the first 2 years of disease.}
 #'   \item{le_het_y5}{Proportion of time using LE HET
 #'         during the first 5 years of disease.}
 #'   \item{le_het_y10}{Proportion of time using LE HET
 #'         during the first 10 years of disease.}
 #'   \item{time_to_treat}{Years it took before the first
 #'         treatment.}
-#'   \item{relapse_count}{Number of relapses during the
+#'   \item{relapse_count_y2}{Number of relapses during the
+#'         first 2 years of disease.}
+#'   \item{relapse_count_y5}{Number of relapses during the
+#'         first 5 years of disease.}
+#'   \item{relapse_count_y10}{Number of relapses during the
 #'         first 10 years of disease.}
 #'   \item{t2_lesions_volume_first}{Volume in mms of T2 lesions in
 #'         MRI at the first available assessment.}
@@ -186,14 +196,19 @@ preprocess_predictors <- function(
       age_onset = age_onset,
       first_visit_dur = first_visit_dur,
       first_edss = first_edss,
+      platform_y2 = Platform_2,
       platform_y5 = Platform_5,
       platform_y10 = Platform_10,
+      het_y2 = HET_2,
       het_y5 = HET_5,
       het_y10 = HET_10,
+      le_het_y2 = LE_HET_2,
       le_het_y5 = LE_HET_5,
       le_het_y10 = LE_HET_10,
       time_to_treat = time_to_treat,
-      relapse_count = relapse_count,
+      relapse_count_y2 = relapse_count_y2,
+      relapse_count_y5 = relapse_count_y5,
+      relapse_count_y10 = relapse_count_y10,
       t2_lesions_volume_first = t2_lesions_volume_first,
       t1_blackholes_volume_first = t1_blackholes_volume_first,
       normalised_brain_atrophy_bpf_sv_first = normalised_brain_atrophz_bpf_sv_first,
@@ -344,18 +359,33 @@ preprocess_predictors_mri <- function(d, onset) {
 #'
 #' @return A tibble with data.
 preprocess_predictors_relapses <- function(d, onset) {
-  d |>
+  d1 <- d |>
     dplyr::left_join(
       onset |>
-        dplyr::mutate(plus10 = onset + lubridate::years(10)),
+        dplyr::mutate(
+          plus2  = onset + lubridate::years(2),
+          plus5  = onset + lubridate::years(5),
+          plus10 = onset + lubridate::years(10)
+        ),
       by = dplyr::join_by(id)
-    ) |>
-    dplyr::filter(relapse_date < plus10) |>
-    tidyr::drop_na(relapse_date) |> # Keeps data with no severity rating
-    dplyr::group_by(id) |>
-    dplyr::summarise(
-      relapse_count = dplyr::n(),
-      .groups = "drop"
+    )
+
+  purrr::map_dfr(c(rlang::quo(plus2), rlang::quo(plus5), rlang::quo(plus10)), function(i) {
+    y <- paste0("y", readr::parse_number(rlang::quo_text(i)))
+    d1 |>
+      dplyr::filter(relapse_date < !!i) |>
+      tidyr::drop_na(relapse_date) |> # Keeps data with no severity rating
+      dplyr::group_by(id) |>
+      dplyr::summarise(
+        relapse_count = dplyr::n(),
+        .groups = "drop"
+      ) |>
+      tibble::add_column(years = y)
+  }) |>
+    tidyr::pivot_wider(
+      names_from = years,
+      names_prefix = "relapse_count_",
+      values_from = relapse_count
     )
 }
 
@@ -370,7 +400,8 @@ preprocess_predictors_treatment <- function(d, onset) {
     dplyr::left_join(
       onset |>
         dplyr::mutate(
-          plus5 = onset + lubridate::years(5),
+          plus2  = onset + lubridate::years(2),
+          plus5  = onset + lubridate::years(5),
           plus10 = onset + lubridate::years(10)
         ),
       by = dplyr::join_by(id)
@@ -396,7 +427,7 @@ preprocess_predictors_treatment <- function(d, onset) {
     dplyr::filter(duration > 0) |>
     tidyr::drop_na()
 
-  tt <- purrr::map_dfr(c(rlang::quo(plus5), rlang::quo(plus10)), function(i) {
+  tt <- purrr::map_dfr(c(rlang::quo(plus2), rlang::quo(plus5), rlang::quo(plus10)), function(i) {
     y <- readr::parse_number(rlang::quo_text(i))
     d1 |>
       dplyr::filter(start_date < !!i) |>

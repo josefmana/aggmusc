@@ -33,21 +33,31 @@ A tibble with data.
 \item{first_visit_dur}{Disease duration in years during
 the first EDSS assessment.}
 \item{first_edss}{First EDSS score.}
+\item{platform_y2}{Proportion of time using Platform
+during the first 2 years of disease.}
 \item{platform_y5}{Proportion of time using Platform
 during the first 5 years of disease.}
 \item{platform_y10}{Proportion of time using Platform
 during the first 10 years of disease.}
+\item{het_y2}{Proportion of time using HET
+during the first 2 years of disease.}
 \item{het_y5}{Proportion of time using HET
 during the first 5 years of disease.}
 \item{het_y10}{Proportion of time using HET
 during the first 10 years of disease.}
+\item{le_het_y2}{Proportion of time using LE HET
+during the first 2 years of disease.}
 \item{le_het_y5}{Proportion of time using LE HET
 during the first 5 years of disease.}
 \item{le_het_y10}{Proportion of time using LE HET
 during the first 10 years of disease.}
 \item{time_to_treat}{Years it took before the first
 treatment.}
-\item{relapse_count}{Number of relapses during the
+\item{relapse_count_y2}{Number of relapses during the
+first 2 years of disease.}
+\item{relapse_count_y5}{Number of relapses during the
+first 5 years of disease.}
+\item{relapse_count_y10}{Number of relapses during the
 first 10 years of disease.}
 \item{t2_lesions_volume_first}{Volume in mms of T2 lesions in
 MRI at the first available assessment.}
