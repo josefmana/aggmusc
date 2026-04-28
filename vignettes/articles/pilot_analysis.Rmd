@@ -20,7 +20,7 @@ In this report, I run preliminary descriptive regression analyses aiming at desc
 library(aggmusc)
 library(dplyr)           # data wrangling
 library(ggplot2)         # visualisation
-library(marginaleffects) 
+library(marginaleffects) # effects computation
 ```
 
 ---
@@ -57,47 +57,97 @@ df_model <-
   )) |>
   select(
     id,
-    aggmusc         = aggressive,
+    aggmusc                = aggressive,
     sex,
     age_onset,
-    dur_first_visit = first_visit_dur,
-    edss_first      = first_edss,
+    dur_first_visit        = first_visit_dur,
+    edss_first             = first_edss,
     relapse_count,
-    platform        = platform_y10,
-    het             = het_y10,
-    le_het          = le_het_y10
+    platform               = platform_y10,
+    het                    = het_y10,
+    le_het                 = le_het_y10,
+    dur_first_mri          = first_mri_dur,
+    t2_lesions_volume      = t2_lesions_volume_first,
+    t1_blackholes_volume   = t1_blackholes_volume_first,
+    brain_atrophy          = normalised_brain_atrophy_bpf_sv_first,
+    t1_tbv_sv              = t1_tbv_sv_first,
+    #corpus_callosum_volume = corpus_callosum_volume_first,
+    NULL
   ) |>
+  filter(dur_first_mri < 10) |>
   tidyr::drop_na()
 ```
 
 ## Modelling
 
 ```{r modelling}
-# ── Model ─────────────────────────────────────────────────────────────────────
-fit <- glm(
+fit_zero <- glm(
+  aggmusc ~ 1,
+  data = df_model,
+  family = binomial()
+)
+
+fit_clin <- glm(
   aggmusc ~
     age_onset +
-    edss_first * dur_first_visit +
+    edss_first +
+    dur_first_visit +
     relapse_count +
-    splines::ns(platform, 3) +
+    platform +
     het +
     le_het,
   data = df_model,
   family = binomial()
 )
 
+fit_mri <- glm(
+  aggmusc ~
+    dur_first_mri +
+    t2_lesions_volume +
+    t1_blackholes_volume +
+    brain_atrophy +
+    t1_tbv_sv,
+  data = df_model,
+  family = binomial()
+)
+
+fit_comb <- glm(
+  aggmusc ~
+    age_onset +
+    edss_first +
+    dur_first_visit +
+    relapse_count +
+    platform +
+    het +
+    le_het +
+    dur_first_mri +
+    t2_lesions_volume +
+    t1_blackholes_volume +
+    brain_atrophy +
+    t1_tbv_sv,
+  data = df_model,
+  family = binomial()
+)
+```
+
+```{r helpers, echo=FALSE}
 # ── Prediction function ───────────────────────────────────────────────────────
 make_curve <- function(var, values, df, fit) {
   base <-
     df |>
     summarise(
-      age_onset       = median(age_onset),
-      dur_first_visit = median(dur_first_visit),
-      edss_first      = median(edss_first),
-      relapse_count   = median(relapse_count),
-      platform        = median(platform),
-      het             = median(het),
-      le_het          = median(le_het)
+      age_onset            = median(age_onset),
+      dur_first_visit      = 2,
+      edss_first           = median(edss_first),
+      relapse_count        = median(relapse_count),
+      platform             = median(platform),
+      het                  = median(het),
+      le_het               = median(le_het),
+      dur_first_mri        = 2,
+      t2_lesions_volume    = median(t2_lesions_volume),
+      t1_blackholes_volume = median(t1_blackholes_volume),
+      brain_atrophy        = median(brain_atrophy),
+      t1_tbv_sv            = median(t1_tbv_sv)
     )
     
     grid <- base[rep(1, length(values)), ]
@@ -118,23 +168,53 @@ make_curve <- function(var, values, df, fit) {
     )
 }
 
+# ── Jitter binary data ────────────────────────────────────────────────────────
+jitt <- function(...) {
+  geom_point(
+    aes_string(...),
+    position = position_jitter(height = 0.05, width = 0.1),
+    size = 2,
+    shape = 21,
+    stroke = 0.4
+  )
+}
+
+# ── Plot style ────────────────────────────────────────────────────────────────
+theme_style <- function() {
+  theme_classic(base_size = 12) +
+  theme(
+    legend.position  = "bottom",
+    strip.text       = element_text(face = "bold"),
+    panel.grid.minor = element_blank(),
+    panel.spacing    = unit(1.2, "lines"),
+    axis.title       = element_text(face = "bold"),
+    legend.title     = element_text(face = "bold")
+  )
+}
+```
+
+```{r fit1-curves, echo=FALSE, warning=FALSE}
 # ── Build curves ──────────────────────────────────────────────────────────────
 curves <- bind_rows(
-  make_curve("age_onset",       seq(5, 67, by = 1),   df_model, fit),
-  make_curve("dur_first_visit", seq(0, 10, by = 0.5), df_model, fit),
-  make_curve("edss_first",      seq(0, 7, by = 0.2),  df_model, fit),
-  make_curve("relapse_count",   seq(0, 22, by = 1),   df_model, fit),
-  make_curve("platform",        seq(0, 1, by = 0.05), df_model, fit),
-  make_curve("het",             seq(0, 1, by = 0.05), df_model, fit),
-  make_curve("le_het",          seq(0, 1, by = 0.05), df_model, fit)
+  make_curve("age_onset",            seq(5, 67, by = 1),       df_model, fit_comb),
+  make_curve("dur_first_visit",      seq(0, 10, by = 0.5),     df_model, fit_comb),
+  make_curve("edss_first",           seq(0, 7, by = 0.2),      df_model, fit_comb),
+  make_curve("relapse_count",        seq(0, 22, by = 1),       df_model, fit_comb),
+  make_curve("platform",             seq(0, 1, by = 0.05),     df_model, fit_comb),
+  make_curve("het",                  seq(0, 1, by = 0.05),     df_model, fit_comb),
+  make_curve("le_het",               seq(0, 1, by = 0.05),     df_model, fit_comb),
+  make_curve("dur_first_mri",        seq(0, 10, by = 0.5),     df_model, fit_comb),
+  make_curve("t2_lesions_volume",    seq(0, 30, by = 0.5),     df_model, fit_comb),
+  make_curve("t1_blackholes_volume", seq(0, 10, by = 0.5),     df_model, fit_comb),
+  make_curve("brain_atrophy",        seq(70, 91, by = 1),      df_model, fit_comb),
+  make_curve("t1_tbv_sv",            seq(800, 1700, by = 500), df_model, fit_comb)
 )
 
 # ── Long data ─────────────────────────────────────────────────────────────────
 df_long <-
   df_model |>
   tidyr::pivot_longer(
-    cols = c(age_onset, dur_first_visit, edss_first,
-             relapse_count, platform, het, le_het),
+    cols = tidyselect::all_of(unique(curves$var)),
     names_to = "var",
     values_to = "value"
   )
@@ -163,13 +243,18 @@ curves <-
 
 # ── Variable names ────────────────────────────────────────────────────────────
 var_labels <- c(
-  age_onset       = "Age at onset (years)",
-  het             = "Time on HET (within 10 years)",
-  dur_first_visit = "Disease duration at first visit (years)",
-  le_het          = "Time on LE HET (within 10 years)",
-  edss_first      = "First EDSS",
-  platform        = "Time on Platform (within 10 years)",
-  relapse_count   = "Number of relapses (within 10 years)"
+  age_onset            = "Age at onset (years)",
+  het                  = "Time on HET (within 10 years)",
+  dur_first_visit      = "Disease duration at first visit (years)",
+  le_het               = "Time on LE HET (within 10 years)",
+  edss_first           = "First EDSS",
+  platform             = "Time on Platform (within 10 years)",
+  relapse_count        = "Number of relapses (within 10 years)",
+  dur_first_mri        = "Disease duration at first MRI (years)",
+  t2_lesions_volume    = "Lesion volumes (T2)",
+  t1_blackholes_volume = "Blackholes volume (T1)",
+  brain_atrophy        = "Normalised brain atrophy",
+  t1_tbv_sv            = "Total brain volume (T1)"
 )
 
 df_long$var <- factor(
@@ -183,7 +268,7 @@ curves$var <- factor(
 )
 
 # ── Second ordinates ──────────────────────────────────────────────────────────
-sec_scales <- lapply(levels(curves$var), function(v) {
+sec_scales_clin <- lapply(levels(curves$var), function(v) {
   df_var <- subset(curves, var == v)
   sf <- unique(df_var$scale_factor)
   
@@ -194,13 +279,13 @@ sec_scales <- lapply(levels(curves$var), function(v) {
     )
   )
 })
+```
 
-# ── Plot ──────────────────────────────────────────────────────────────────────
+```{r fit1-deer-plot, echo=FALSE, warning=FALSE, fig.height=10}
 df_long |>
   ggplot() +
   aes(x = value, fill = factor(aggmusc)) +
   geom_density(alpha = 0.4) +
-    
   geom_ribbon(
     data = curves,
     aes(x = x, ymin = conf_low_scaled, ymax = conf_high_scaled),
@@ -208,7 +293,6 @@ df_long |>
     fill = "red",
     alpha = 0.15
   ) +
-    
   geom_line(
     data = curves,
     aes(x = x, y = pred_scaled),
@@ -216,38 +300,57 @@ df_long |>
     color = "red",
     linewidth = 1
   ) +
-  
   facet_wrap(
     ~ var,
     scales = "free",
     ncol = 2,
     labeller = as_labeller(var_labels)
   ) +
-  
   ggh4x::facetted_pos_scales(
-    y = sec_scales
+    y = sec_scales_clin
   ) +
-  
   coord_cartesian(ylim = c(0, NA)) +
-  
   scale_fill_manual(
     values = c("gray30", "skyblue"),
     labels = c("Non-aggressive", "Aggressive")
   ) +
-  
   labs(
     x = "Value",
     y = "Density",
     fill = "Phenotype"
   ) +
-    
-  theme_classic(base_size = 14) +
-  theme(
-    legend.position = "bottom",
-    strip.text = element_text(face = "bold"),
-    panel.grid.minor = element_blank(),
-    panel.spacing = unit(1.2, "lines"),
-    axis.title = element_text(face = "bold"),
-    legend.title = element_text(face = "bold")
-  )
+  theme_style()
+```
+
+```{r fit1-shark-plot, echo=FALSE, warning=FALSE, fig.height=10}
+df_long |>
+  ggplot() +
+  aes(x = value, y = aggmusc, colour = aggmusc) +
+  jitt() +  
+  geom_ribbon(
+    data = curves,
+    aes(x = x, ymin = conf_low, ymax = conf_high),
+    inherit.aes = FALSE,
+    fill = "red3",
+    alpha = 0.15
+  ) +
+  geom_line(
+    data = curves,
+    aes(x = x, y = pred),
+    inherit.aes = FALSE,
+    color = "red3",
+    linewidth = 1
+  ) +
+  facet_wrap(
+    ~ var,
+    scales = "free_x",
+    ncol = 3,
+    labeller = as_labeller(var_labels)
+  ) +
+  scale_y_continuous(breaks = c(0, 0.5, 1)) +
+  labs(
+    x = "Value",
+    y = "Probability of Aggressive Phenotype"
+  ) +
+  theme_style()
 ```
