@@ -14,20 +14,32 @@ knitr::opts_chunk$set(
 )
 ```
 
-In this report, I run preliminary descriptive regression analyses aiming at describing probability of *"aggmusc"* (**Agg**ressive **Mu**ltiple **Sc**lerosis) given *demographic and clinical* (age at onset, sex, first recorded EDSS, disease duration at the time of the first visit and number of relapses during the first ten years of disease course), and 10-year *treatment profile* (percentage spent treated via Platform, HET and LE HET treatment types) variables.
+In this report, I run preliminary regression analyses aiming at describing
+probability of *"aggmusc"* (**Agg**ressive **Mu**ltiple **Sc**lerosis) given
+*demographic and clinical* (age at onset, relapses during the first two years
+of disease course), 2-year *treatment profile* (percentage spent treated via
+Platform, HET and LE HET treatment types), and *MRI* variables.
 
 ```{r setup, message=FALSE}
 library(aggmusc)
-library(dplyr)           # data wrangling
-library(ggplot2)         # visualisation
+library(tidyverse)       # data wrangling
+library(gt)              # tables formatting
 library(marginaleffects) # effects computation
+library(rstanarm)        # Bayesian modelling
+library(projpred)        # variable selection
+
+n_cores <- parallel::detectCores(logical = FALSE)
 ```
 
 ---
 
-## Data
+## Data and outcome
 
-Data preprocessing process is detailed in the [Data Import vignette](data_import.html).
+We analysed a pilot cohort of patients with relapsing multiple sclerosis,
+focusing on early clinical and MRI-derived predictors of an aggressive disease
+course (hereafter _AggMS_). The binary outcome `aggmusc` indicates whether a
+patient meets the criteria for aggressive MS (see
+[data import vignette](data_import.html)).
 
 ```{r data, warning=FALSE, message=FALSE, cache=TRUE}
 data_path  <- "/Volumes/Extreme SSD/aggrescler/imed_export_20250328_data.xlsx"
@@ -52,8 +64,8 @@ df <- with(data_raw, preprocess_predictors(
 df_model <-
   df |>
   mutate(across(
-      c(platform_y10, het_y10, le_het_y10),
-      .fns = \(x) if_else(is.na(x), 0, x)
+    c(platform_y2, het_y2, le_het_y2),
+    .fns = \(x) if_else(is.na(x), 0, x)
   )) |>
   select(
     id,
@@ -62,10 +74,10 @@ df_model <-
     age_onset,
     dur_first_visit        = first_visit_dur,
     edss_first             = first_edss,
-    relapse_count,
-    platform               = platform_y10,
-    het                    = het_y10,
-    le_het                 = le_het_y10,
+    relapse_count          = relapse_count_y2,
+    platform               = platform_y2,
+    het                    = het_y2,
+    le_het                 = le_het_y2,
     dur_first_mri          = first_mri_dur,
     t2_lesions_volume      = t2_lesions_volume_first,
     t1_blackholes_volume   = t1_blackholes_volume_first,
@@ -75,23 +87,46 @@ df_model <-
     NULL
   ) |>
   filter(dur_first_mri < 10) |>
-  tidyr::drop_na()
+  drop_na()
+
+# ── Patients counts ───────────────────────────────────────────────────────────
+table(df_model$aggmusc)
 ```
 
-## Modelling
+___
+
+## Frequentist models and incremental predictive value
+
+Predictors were group into three conceptually distinct sets resulting in the
+following models:
+
+- **Baseline (M0)**:  
+  intercept-only model.
+- **Clinical profile (M1)**:  
+  age at onset, early relapse activity, and early treatment exposure (time on
+  HET / LE-HET / Platform therapy within 2 years).
+- **MRI profile (M2)**:  
+  disease duration at MRI, total brain volume (T1), normalised brain atrophy,
+  lesion volumes (T2), and black hole volumes (T1).
+- **Compound model (M3)**:  
+  combination of clinical and MRI predictors.
+
+We first estimated a series of logistic regression models and compared them
+using likelihood-ratio tests (Type II ANOVA) to assess the incremental
+predictive value of clinical and MRI information.
 
 ```{r modelling}
+# ── Baseline: no predictors ───────────────────────────────────────────────────
 fit_zero <- glm(
   aggmusc ~ 1,
   data = df_model,
   family = binomial()
 )
 
+# ── Clinical & treatment profile ──────────────────────────────────────────────
 fit_clin <- glm(
   aggmusc ~
     age_onset +
-    edss_first +
-    dur_first_visit +
     relapse_count +
     platform +
     het +
@@ -100,6 +135,7 @@ fit_clin <- glm(
   family = binomial()
 )
 
+# ── Magnetic resonance imaging ────────────────────────────────────────────────
 fit_mri <- glm(
   aggmusc ~
     dur_first_mri +
@@ -111,11 +147,10 @@ fit_mri <- glm(
   family = binomial()
 )
 
+# ── Combined model ────────────────────────────────────────────────────────────
 fit_comb <- glm(
   aggmusc ~
     age_onset +
-    edss_first +
-    dur_first_visit +
     relapse_count +
     platform +
     het +
@@ -129,6 +164,112 @@ fit_comb <- glm(
   family = binomial()
 )
 ```
+
+___
+
+### Models comparisons
+
+```{r comparisons, echo=FALSE}
+comps <- list(
+  clin_over_0   = anova(fit_zero, fit_clin),
+  mri_over_0    = anova(fit_zero, fit_mri ),
+  clin_over_mri = anova(fit_mri,  fit_comb),
+  mri_over_clin = anova(fit_clin, fit_comb)
+)
+
+model_map <- list(
+  "clin_over_0"   = c("M0 (baseline)", "M1 (clinical)", "Predictive value of clinical profile"),
+  "mri_over_0"    = c("M0 (baseline)", "M2 (MRI)"     , "Predictive value of MRI profile"),
+  "clin_over_mri" = c("M2 (MRI)",      "M3 (compound)", "Predictive value of clinical profile above MRI profile"),
+  "mri_over_clin" = c("M1 (clinical)", "M3 (compound)", "Predictive value of MRI profile above clinical profile")
+)
+
+extract_anova_data <- function(list) {
+  purrr::map_dfr(names(comps), function(i) {
+    comp  <- list[[i]]
+    stats <- comp[2, ]
+    tibble::tibble(
+      estimand = model_map[[i]][3],
+      model_0  = model_map[[i]][1],
+      model_1  = model_map[[i]][2],
+      Chisq    = stats[["Deviance"]],
+      df       = stats[["Df"]],
+      p        = stats[["Pr(>Chi)"]]
+    )
+  })
+}
+
+render_comparison_table <- function(data) {
+  data |>
+    gt() |>
+    cols_label(
+      estimand = "Tested effect",
+      model_0  = "Model 0",
+      model_1  = "Model 1",
+      Chisq    = html("&chi;<sup>2</sup>"),
+      df       = "df",
+      p        = "p"
+    ) |>
+    fmt_number(
+      columns = Chisq,
+      decimals = 2
+    ) |>
+    fmt_number(
+      columns = p,
+      decimals = 3
+    ) |>
+    sub_small_vals(
+      columns = p,
+      threshold = 0.001
+    ) |>
+    tab_style(
+      style = cell_text(weight = "bold"),
+      locations = cells_row_groups()
+    )
+}
+
+extract_anova_data(comps) |>
+  render_comparison_table() |>
+  cols_align(align = "center", columns = -1)
+```
+
+**Interpretation.**  
+Both clinical and MRI predictors substantially improve prediction over baseline.
+Importantly, each domain adds unique information beyond the other, as evidenced
+by the significant improvements when adding clinical variables to MRI and vice
+versa.
+___
+
+### Marginal effects
+
+To better understand model behaviour, we inspected marginal effects from the
+compound model (M3). Prediction lines for each variable were statistically
+fixed at sample median values for all remaining variables (with the exception
+of the disease duration at MRI which was statistically fixed at two years).
+
+Results patterns:
+
+- **Age at onset**:  
+  Higher age is associated with increased probability of _AggMS_.
+- **Disease duration at first MRI**:  
+  Weak positive association, suggesting that longer untreated/undocumented
+  disease may reflect more aggressive trajectories.
+- **Treatment exposure** (within 2 years):  
+  Time on HET and LE-HET shows strong mass near zero, limiting interpretability.  
+  Time on Platform therapy shows a slight negative association with _AggMS_
+  probability.
+- **MRI markers**:
+  Normalised brain atrophy shows a clear effect: higher atrophy score is
+  associated with lower predicted _AggMS_ probability in this dataset.
+- **Total brain volume**  
+  exhibits a weak negative trend.
+- **Lesion volumes (T2)** and **black hole volumes (T1)**  
+  show small positive associations.
+
+A key practical observation is the large imbalance in the outcome: most
+observations cluster near zero predicted probability, with a small subset near
+one. This leads to flat marginal trends for several predictors and wide
+uncertainty bands.
 
 ```{r helpers, echo=FALSE}
 # ── Prediction function ───────────────────────────────────────────────────────
@@ -180,10 +321,10 @@ jitt <- function(...) {
 }
 
 # ── Plot style ────────────────────────────────────────────────────────────────
-theme_style <- function() {
+theme_style <- function(leg_pos = "bottom") {
   theme_classic(base_size = 12) +
   theme(
-    legend.position  = "bottom",
+    legend.position  = leg_pos,
     strip.text       = element_text(face = "bold"),
     panel.grid.minor = element_blank(),
     panel.spacing    = unit(1.2, "lines"),
@@ -197,17 +338,15 @@ theme_style <- function() {
 # ── Build curves ──────────────────────────────────────────────────────────────
 curves <- bind_rows(
   make_curve("age_onset",            seq(5, 67, by = 1),       df_model, fit_comb),
-  make_curve("dur_first_visit",      seq(0, 10, by = 0.5),     df_model, fit_comb),
-  make_curve("edss_first",           seq(0, 7, by = 0.2),      df_model, fit_comb),
-  make_curve("relapse_count",        seq(0, 22, by = 1),       df_model, fit_comb),
+  make_curve("relapse_count",        seq(0, 10, by = 0.5),     df_model, fit_comb),
   make_curve("platform",             seq(0, 1, by = 0.05),     df_model, fit_comb),
   make_curve("het",                  seq(0, 1, by = 0.05),     df_model, fit_comb),
   make_curve("le_het",               seq(0, 1, by = 0.05),     df_model, fit_comb),
   make_curve("dur_first_mri",        seq(0, 10, by = 0.5),     df_model, fit_comb),
-  make_curve("t2_lesions_volume",    seq(0, 30, by = 0.5),     df_model, fit_comb),
-  make_curve("t1_blackholes_volume", seq(0, 10, by = 0.5),     df_model, fit_comb),
+  make_curve("t2_lesions_volume",    seq(0, 60, by = 1),       df_model, fit_comb),
+  make_curve("t1_blackholes_volume", seq(0, 18, by = 1),       df_model, fit_comb),
   make_curve("brain_atrophy",        seq(70, 91, by = 1),      df_model, fit_comb),
-  make_curve("t1_tbv_sv",            seq(800, 1700, by = 500), df_model, fit_comb)
+  make_curve("t1_tbv_sv",            seq(800, 1700, by = 100), df_model, fit_comb)
 )
 
 # ── Long data ─────────────────────────────────────────────────────────────────
@@ -244,17 +383,15 @@ curves <-
 # ── Variable names ────────────────────────────────────────────────────────────
 var_labels <- c(
   age_onset            = "Age at onset (years)",
-  het                  = "Time on HET (within 10 years)",
-  dur_first_visit      = "Disease duration at first visit (years)",
-  le_het               = "Time on LE HET (within 10 years)",
-  edss_first           = "First EDSS",
-  platform             = "Time on Platform (within 10 years)",
-  relapse_count        = "Number of relapses (within 10 years)",
-  dur_first_mri        = "Disease duration at first MRI (years)",
-  t2_lesions_volume    = "Lesion volumes (T2)",
-  t1_blackholes_volume = "Blackholes volume (T1)",
+  dur_first_mri        = "Disease duration at MRI (years)",
+  het                  = "Time on HET (within 2 years)",
+  t1_tbv_sv            = "Total brain volume (T1)",
+  le_het               = "Time on LE HET (within 2 years)",
   brain_atrophy        = "Normalised brain atrophy",
-  t1_tbv_sv            = "Total brain volume (T1)"
+  platform             = "Time on Platform (within 2 years)",
+  t2_lesions_volume    = "Lesion volumes (T2)",
+  relapse_count        = "Number of relapses (within 2 years)",
+  t1_blackholes_volume = "Blackholes volume (T1)"
 )
 
 df_long$var <- factor(
@@ -281,7 +418,16 @@ sec_scales_clin <- lapply(levels(curves$var), function(v) {
 })
 ```
 
-```{r fit1-deer-plot, echo=FALSE, warning=FALSE, fig.height=10}
+### Relative effects
+
+The following figure plots data distributions as densities overlaid by model
+predictions (red logistic curve with 95% CIs).  
+The aim of this plot is to provide visualisation of **relative differences**
+between patients with and without _AggMS_, consequently densities are scaled to
+maximise contrast between distributions and predicted probabilities plotted on
+independent scales (the right ordinate).
+
+```{r shark-plot, echo=FALSE, warning=FALSE, fig.height=10}
 df_long |>
   ggplot() +
   aes(x = value, fill = factor(aggmusc)) +
@@ -319,10 +465,18 @@ df_long |>
     y = "Density",
     fill = "Phenotype"
   ) +
-  theme_style()
+  theme_style("top")
 ```
 
-```{r fit1-shark-plot, echo=FALSE, warning=FALSE, fig.height=10}
+### Absolute effects
+
+The following figure plots data distributions as scatter dots overlaid by model
+predictions (red logistic curve with 95% CIs).  
+The aim of this plot is to provide visualisation of **absolute differences**
+between patients with and without _AggMS_, consequently all ordinates have a
+common scale spanning 0-1.
+
+```{r deer-plot, echo=FALSE, warning=FALSE, fig.height=12}
 df_long |>
   ggplot() +
   aes(x = value, y = aggmusc, colour = aggmusc) +
@@ -344,13 +498,309 @@ df_long |>
   facet_wrap(
     ~ var,
     scales = "free_x",
-    ncol = 3,
+    ncol = 2,
     labeller = as_labeller(var_labels)
   ) +
   scale_y_continuous(breaks = c(0, 0.5, 1)) +
+  coord_cartesian(ylim = c(-0.05, 1.05)) +
   labs(
     x = "Value",
-    y = "Probability of Aggressive Phenotype"
+    y = "Probability of Aggressive Phenotype",
+    colour = "Phenotype\n(1 → Aggr.)"
   ) +
-  theme_style()
+  theme_style("right")
 ```
+
+## Bayesian GLM and projection predictive selection
+
+Next, we estimated a Bayesian logistic regression model using weakly informative
+priors. This full model (corresponding to **M3**) serves as the reference model
+for projection predictive variable selection (`projpred`).
+
+```{r scale-data}
+preds <- c(
+  "age_onset",
+  "relapse_count",
+  "platform",
+  "het",
+  "le_het",
+  "dur_first_mri",
+  "t2_lesions_volume",
+  "t1_blackholes_volume",
+  "brain_atrophy",
+  "t1_tbv_sv"
+)
+
+scales <- df_model |>
+  select(tidyselect::all_of(preds)) |>
+  purrr::imap_dfr(function(x, name) {
+    tibble(variable = name, M = mean(x), SD = sd(x))
+  })
+
+df_model <- df_model |>
+  mutate(across(
+    tidyselect::all_of(preds),
+    .fns = \(x) scale(x)[, 1],
+    .names = "{.col}_z"
+  ))
+```
+
+```{r bayes-mod, message=FALSE, cache=TRUE}
+ref_mod <- stan_glm(
+  aggmusc ~
+    age_onset_z +
+    relapse_count_z +
+    platform_z +
+    het_z +
+    le_het_z +
+    dur_first_mri_z +
+    t2_lesions_volume_z +
+    t1_blackholes_volume_z +
+    brain_atrophy_z +
+    t1_tbv_sv_z,
+  data = df_model,
+  family = binomial(link = "logit"),
+  prior = student_t(df = 7, location = 0, scale = 2.5),
+  prior_intercept = student_t(df = 7, location = 0, scale = 2.5),
+  cores = n_cores,
+  seed = 87542
+)
+```
+
+### Projection predictive feature selection
+
+Projection predictive selection identified a parsimonious subset of predictors
+that retains most of the predictive performance of the full model.
+
+Consistently selected variables included:
+
+- normalised brain atrophy
+- age at onset
+
+To the final model we also included disease duration at MRI assessment to allow
+for predictions to be compute at specific assessment time values.
+
+```{r preliminary-varsel-fast}
+# ── Preliminary fast model ────────────────────────────────────────────────────
+refm_obj <- get_refmodel(ref_mod)
+
+cvvs_fast <- cv_varsel(
+  refm_obj,
+  validate_search = FALSE,
+  method = "L1",
+  refit_prj = FALSE,
+  nterms_max = 20,
+  verbose = 0
+)
+
+#options(projpred.plot_vsel_size_position = "primary_x_bottom")
+#options(projpred.plot_vsel_text_angle = 0)
+#plot(cvvs_fast, stats = "mlpd", ranking_nterms_max = NA)
+
+# ── Preliminary refit ─────────────────────────────────────────────────────────
+cvvs_fast_refit <- cv_varsel(
+  cvvs_fast,
+  nclusters_pred = 20,
+  verbose = 0
+)
+
+#plot(cvvs_fast_refit, stats = "mlpd", ranking_nterms_max = NA)
+
+# ── Final varsel model ────────────────────────────────────────────────────────
+cv_fits <- run_cvfun(refm_obj)
+
+use_parallel <- TRUE
+if (use_parallel) {
+  doParallel::registerDoParallel(n_cores)
+}
+
+cvvs <- cv_varsel(
+  refm_obj,
+  cv_method = "kfold",
+  cvfits = cv_fits,
+  nclusters_pred = 20,
+  parallel = use_parallel,
+  verbose = 0
+)
+
+if (use_parallel) {
+  doParallel::stopImplicitCluster()
+  foreach::registerDoSEQ()
+}
+
+suggest_size(cvvs, stat = "mlpd")
+size_decided <- 2
+
+( rk <- ranking(cvvs) )
+
+( pr_rk <- cv_proportions(rk) )
+```
+
+```{r varsel-plot, echo=FALSE}
+options(projpred.plot_vsel_show_cv_proportions = TRUE)
+plot(cvvs, stats = "mlpd", deltas = TRUE)
+```
+
+```{r projected-model, cache=TRUE}
+predictors_final <- c(
+  head(rk[["fulldata"]], size_decided),
+  "dur_first_mri_z" # add MRI date for posterior stratification
+)
+
+prj <- project(
+  refm_obj,
+  predictor_terms = predictors_final,
+  verbose = 0
+)
+```
+
+---
+
+### Posterior predictions
+
+To make the model behaviour more concrete, we computed posterior predictions
+from the projection-selected model across a grid of clinically plausible values
+of selected variables. Specifically:
+
+- `age_onset`: varied across its observed range
+- `brain_atrophy`: varied across its observed range
+- `dur_first_mri`: fixed at 2 years
+
+```{r post-pred, echo=FALSE}
+# Construct prediction grid
+pgrid <- expand_grid(
+  age_onset = seq(20, 60, length.out = 25),
+  brain_atrophy = seq(70, 90, length.out = 25),
+  dur_first_mri = 2
+)
+
+# Apply scaling (reuse your scaling table `scls`)
+X <- c("age_onset", "brain_atrophy", "dur_first_mri")
+pgrid <- pgrid |>
+  mutate(across(
+    .cols = all_of(X),
+    .fns = function(x) {
+      scl <- scales |>
+        filter(variable == cur_column())
+      (x - scl$M) / scl$SD
+    },
+    .names = "{.col}_scaled"
+  ))
+
+# Extract posterior as rvars
+b <- posterior::as_draws_rvars(prj)
+
+# Linear predictor
+pgrid$linpred <- b$`(Intercept`
+for (v in X) {
+  pgrid$linpred <- pgrid$linpred +
+    b[[paste0(v, "_z")]] * pgrid[[paste0(v, "_scaled")]]
+}
+
+# Posterior probabilities
+pgrid$prob <- 1 / (1 + exp(-pgrid$linpred))
+
+# Summaries (correct: element-wise over draws)
+pgrid$prob_mean <- mean(pgrid$prob)
+pgrid$prob_lo   <- posterior::quantile2(pgrid$prob, 0.025)
+pgrid$prob_hi   <- posterior::quantile2(pgrid$prob, 0.975)
+
+# Precision (inverse variance)
+pgrid$prob_prec    <- 1 / posterior::var(pgrid$prob)
+pgrid$alpha_scaled <- scales::rescale(pgrid$prob_prec, to = c(0.5, 1))
+#pgrid$alpha_scaled <- scales::rescale(pgrid$prob_hi - pgrid$prob_lo, to = c(1, 0.5))
+
+# Plot
+pgrid |>
+  ggplot() +
+  aes(
+    x = brain_atrophy,
+    y = age_onset,
+    fill = prob_mean,
+    alpha = alpha_scaled
+  ) +
+  geom_tile() +
+  scale_fill_viridis_c(
+    name = "Pr(AggMS)",
+    option = "inferno"
+  ) +
+  scale_alpha(
+    range = c(0.5, 1),
+    guide = "none"
+  ) +
+  labs(
+    y = "Age at onset",
+    x = "Normalised brain atrophy (at 2 years of disease duration)",
+    title = "Posterior predicted probability of Aggressive MS phenotype"
+  ) +
+  theme_bw()
+```
+
+**Interpretation of posterior predictions**  
+The posterior prediction surface shows a smooth, low-probability regime across
+most of the predictor space, with modest increases in predicted _AggMS_
+probability at higher age at onset and lower brain atrophy values
+(consistent with the marginal effects).
+
+**Interpretation of posterior predictions**  
+The posterior prediction surface shows a strong and approximately monotonic
+gradient across the predictor space.
+
+- **Age at onset** shows a clear positive association:  
+  higher age is consistently linked to higher predicted probability of _AggMS_
+  across all levels of brain atrophy.
+- **Normalised brain atrophy** exhibits a pronounced negative association:  
+  lower values are associated with substantially higher predicted risk.
+
+These effects combine additively and smoothly, producing a diagonal gradient in
+the risk surface:
+
+- The highest predicted probabilities (~0.7–0.85) occur for patients with high
+  age at onset and low brain atrophy index.
+- The lowest probabilities (<0.1) are concentrated among younger patients with
+  high brain atrophy index.
+- Intermediate regions show gradual transitions without sharp thresholds,
+  indicating that the model does not identify clear decision boundaries but
+  rather a continuous risk spectrum.
+- Overall, the model shows relatively low prediction precision (indicating by
+  desaturated colours across most sections of the plot).
+
+---
+
+## Summary
+
+This pilot analysis examined early clinical, treatment, and MRI predictors of
+the aggressive MS phenotype using both frequentist and Bayesian regression
+frameworks.
+
+- Likelihood-ratio comparisons showed that **clinical and MRI variables each
+  contribute predictive information**, and that their combination improves model
+  fit relative to either domain alone.
+- Marginal effects from the combined model indicate that **age at onset and
+  MRI-derived measures (particularly brain atrophy index)** are the most
+  consistently structured predictors. In contrast, treatment exposure variables
+  are weakly identified, largely due to their skewed distributions within the
+  first two years.
+- Projection predictive selection aligns with this pattern: a **low-dimensional
+  subset of predictors**, primarily age at onset and brain atrophy, captures most
+  of the predictive signal present in the full model.
+- Posterior predictions from the projected model show that these predictors
+  define a **smooth risk surface spanning a wide range of predicted
+  probabilities**. Within this surface:
+  - higher age at onset is associated with higher predicted risk,
+  - lower brain atrophy index values correspond to higher predicted risk, and
+  - their joint effect dominates the model’s behaviour.
+
+Overall, the analysis suggests that:
+- **Predictive structure in this dataset is relatively simple**, with most
+  signal concentrated in a small number of variables.
+- **MRI and clinical information are complementary**, but not all collected
+  variables contribute meaningfully once key predictors are accounted for.
+- **Treatment variables**, as currently represented, provide **limited
+  additional information** in early disease.
+
+Given the pilot nature of the data, the main next steps are:
+- **external validation** on an independent cohort, and
+- **refinement of predictors**, particularly through
+  - improved representation of treatment exposure, and
+  - incorporation of longitudinal or more precisely modelled imaging features.
