@@ -27,5 +27,7 @@ Imports:
     purrr (>= 1.2.0),
     tibble (>= 3.3.0),
     cowplot (>= 1.2.0),
-    ggh4x (>= 0.3.1)
+    ggh4x (>= 0.3.1),
+    tidyselect (>= 1.2.1),
 VignetteBuilder: knitr
+URL: https://josefmana.github.io/aggmusc/

@@ -3,7 +3,6 @@
 #' Based on data of patients who
 #'
 #' @param d0 A tibble containing basic demographic variables.
-#' @param d1 A tibble containing processed EDSS data.
 #'
 #' @return A tibble
 #'

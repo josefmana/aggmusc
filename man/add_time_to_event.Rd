@@ -8,8 +8,6 @@ add_time_to_event(d0)
 }
 \arguments{
 \item{d0}{A tibble containing basic demographic variables.}
-
-\item{d1}{A tibble containing processed EDSS data.}
 }
 \value{
 A tibble
