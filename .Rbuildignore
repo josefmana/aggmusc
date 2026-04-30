@@ -4,3 +4,6 @@
 ^_nogit$
 ^\.positai$
 ^\.claude$
+^_pkgdown\.yml$
+^docs$
+^pkgdown$
